@@ -4,12 +4,12 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 
-from rest_framework.permissions import IsAuthenticated
-from .permissions import IsManager
-
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 # import model
 from .models import MenuItem, Category
 from .serializers import MenuItemSerializer, UserSerializer
+
+from django.contrib.auth.models import User, Group
 
 
 # User management and Authentication Endpoints.
@@ -37,10 +37,30 @@ def get_user_details(request):
     :return: user details
     """
     user = request.user
-    return Response({
-        'username': user.username,
-        'email': user.email,
-    })
+
+    # option without using the serializer
+    # return Response({
+    #     'username': user.username,
+    #     'email': user.email,
+    # })
+    # option 2
+    user_details_serialized = UserSerializer(user)
+
+    return Response(user_details_serialized.data, status.HTTP_200_OK)
+
+
+# User groups management endpoints
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def get_managers_details(request):
+    print("Inside: {get_managers_details}")
+    if request.method == 'GET':
+        # Get the 'Manager' group or raise a 404 if it doesn't exist
+        manager_group = get_object_or_404(Group, name='Manager')
+        # Get users in the 'Manager' group
+        manager_users = User.objects.filter(groups=manager_group) # or manager_users = manager_group.user_set.all()
+        manager_users_serializer = UserSerializer(manager_users, many=True)
+        return Response(manager_users_serializer.data, status.HTTP_200_OK)
 
 
 @api_view(['GET', 'POST'])
@@ -150,7 +170,7 @@ def single_menu_item(request, pk):
     # Stop further execution if user is not a manager
     if not request.user.groups.filter(name='Manager').exists():
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-    
+
     if request.method == 'PUT':
         serializer = MenuItemSerializer(menu_item, data=request.data)
         if serializer.is_valid():
@@ -168,4 +188,3 @@ def single_menu_item(request, pk):
     elif request.method == 'DELETE':
         menu_item.delete()
         return Response({'message': 'Resource deleted successfully.'}, status=status.HTTP_204_NO_CONTENT)
-
