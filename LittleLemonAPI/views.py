@@ -1,5 +1,6 @@
 # Create your views here.
 from django.shortcuts import get_object_or_404
+from django.http import Http404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
@@ -53,14 +54,38 @@ def get_user_details(request):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAdminUser])
 def get_managers_details(request):
-    print("Inside: {get_managers_details}")
+    """
+    Endpoint: /api/groups/manager/users
+    GET: List all Manager
+    POST: Adds or removes a user from the manager group
+    :param request:
+    :return: JSON() and status code
+    """
     if request.method == 'GET':
         # Get the 'Manager' group or raise a 404 if it doesn't exist
         manager_group = get_object_or_404(Group, name='Manager')
         # Get users in the 'Manager' group
-        manager_users = User.objects.filter(groups=manager_group) # or manager_users = manager_group.user_set.all()
+        manager_users = User.objects.filter(groups=manager_group)  # or manager_users = manager_group.user_set.all()
         manager_users_serializer = UserSerializer(manager_users, many=True)
         return Response(manager_users_serializer.data, status.HTTP_200_OK)
+
+    if request.method == 'POST':
+        # Get the user instance
+        username = request.data['username']  # get username from POST request
+        # user = get_object_or_404(User, username=username)
+        try:
+            user = get_object_or_404(User, username=username)
+        except Http404:
+            return Response({"message": f"User with username '{username}' not found."}, status.HTTP_404_NOT_FOUND)
+
+        # Get the 'Manager' group
+        manager_group = Group.objects.get(name='Manager')
+        if user.groups.filter(name=manager_group).exists():  # remove from group if already added
+            user.groups.remove(manager_group)
+            return Response({"message": f"You demoted {user} from manager."}, status.HTTP_200_OK)
+        else:  # Add user to Manager
+            user.groups.add(manager_group)
+            return Response({"message": f"You promoted {user} to manager."}, status.HTTP_200_OK)
 
 
 @api_view(['GET', 'POST'])
