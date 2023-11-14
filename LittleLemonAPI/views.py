@@ -53,7 +53,7 @@ def get_user_details(request):
 # User groups management endpoints
 @api_view(['GET', 'POST'])
 @permission_classes([IsAdminUser])
-def get_managers_details(request):
+def fetch_managers_details_or_promote_user(request):
     """
     Endpoint: /api/groups/manager/users
     GET: List all Manager
@@ -85,6 +85,25 @@ def get_managers_details(request):
         else:  # Add user to Manager
             user.groups.add(manager_group)
             return Response({"message": f"You promoted {user} to a manager."}, status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def demote_user_manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
+    """
+    Demote user from manager group via DELETE Request
+    :param request:
+    :param pk:
+    :return:
+    """
+    if request.method == 'DELETE':
+        manager_group = get_object_or_404(Group, name='Manager')
+        user = get_object_or_404(User, id=pk)
+        if user.groups.filter(name=manager_group).exists(): # if a manager, remove/demote user
+            user.groups.remove(manager_group)
+            return Response({"message": f"<{user.username}> is demoted. No longer manager."})
+
+        return Response({"message": f"<{user.username}> is not a manager."}) # inform if user is not a manager
 
 
 @api_view(['GET', 'POST'])
