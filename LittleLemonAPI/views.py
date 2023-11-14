@@ -57,7 +57,7 @@ def get_managers_details(request):
     """
     Endpoint: /api/groups/manager/users
     GET: List all Manager
-    POST: Adds or removes a user from the manager group
+    POST: Adds user to the manager group/promote user to a manager
     :param request:
     :return: JSON() and status code
     """
@@ -80,12 +80,11 @@ def get_managers_details(request):
 
         # Get the 'Manager' group
         manager_group = Group.objects.get(name='Manager')
-        if user.groups.filter(name=manager_group).exists():  # remove from group if already added
-            user.groups.remove(manager_group)
-            return Response({"message": f"You demoted {user} from manager."}, status.HTTP_200_OK)
+        if user.groups.filter(name=manager_group).exists():  # inform if the user is already a manager
+            return Response({"message": f"The user <{user}> is already a manager."}, status.HTTP_200_OK)
         else:  # Add user to Manager
             user.groups.add(manager_group)
-            return Response({"message": f"You promoted {user} to manager."}, status.HTTP_200_OK)
+            return Response({"message": f"You promoted {user} to a manager."}, status.HTTP_200_OK)
 
 
 @api_view(['GET', 'POST'])
