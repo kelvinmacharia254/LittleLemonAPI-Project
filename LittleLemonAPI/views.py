@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-# import model
+# import models
 from .models import MenuItem, Category
 from .serializers import MenuItemSerializer, UserSerializer
 
@@ -31,7 +31,7 @@ def signup(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_user_details(request):
+def user_details(request):
     """
     Fetch details of the authenticated user
     :param request:
@@ -53,7 +53,7 @@ def get_user_details(request):
 # User groups management endpoints
 @api_view(['GET', 'POST'])
 @permission_classes([IsAdminUser])
-def fetch_managers_details_or_promote_user(request):
+def managers_details(request):
     """
     Endpoint: /api/groups/manager/users
     GET: List all Manager
@@ -66,8 +66,8 @@ def fetch_managers_details_or_promote_user(request):
         manager_group = get_object_or_404(Group, name='Manager')
         # Get users in the 'Manager' group
         manager_users = User.objects.filter(groups=manager_group)  # or manager_users = manager_group.user_set.all()
-        manager_users_serializer = UserSerializer(manager_users, many=True)
-        return Response(manager_users_serializer.data, status.HTTP_200_OK)
+        manager_users_serialized = UserSerializer(manager_users, many=True)
+        return Response(manager_users_serialized.data, status.HTTP_200_OK)
 
     if request.method == 'POST':
         # Get the user instance
@@ -81,15 +81,15 @@ def fetch_managers_details_or_promote_user(request):
         # Get the 'Manager' group
         manager_group = Group.objects.get(name='Manager')
         if user.groups.filter(name=manager_group).exists():  # inform if the user is already a manager
-            return Response({"message": f"The user <{user}> is already a manager."}, status.HTTP_200_OK)
+            return Response({"message": f"The user <{user}> is already a manager."}, status.HTTP_204_NO_CONTENT)
         else:  # Add user to Manager
             user.groups.add(manager_group)
-            return Response({"message": f"You promoted {user} to a manager."}, status.HTTP_200_OK)
+            return Response({"message": f"You promoted {user} to a manager."}, status.HTTP_201_CREATED)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser])
-def demote_user_manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
+def manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
     """
     Demote user from manager group via DELETE Request
     :param request:
@@ -99,11 +99,65 @@ def demote_user_manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
     if request.method == 'DELETE':
         manager_group = get_object_or_404(Group, name='Manager')
         user = get_object_or_404(User, id=pk)
-        if user.groups.filter(name=manager_group).exists(): # if a manager, remove/demote user
+        if user.groups.filter(name=manager_group).exists():  # if a manager, remove/demote user
             user.groups.remove(manager_group)
-            return Response({"message": f"<{user.username}> is demoted. No longer manager."})
+            return Response({"message": f"<{user.username}> is demoted. No longer manager."}, status.HTTP_200)
+        # inform if user is not a manager
+        return Response({"message": f"<{user.username}> is not a manager."}, status.HTTP_404_NOT_FOUND)
 
-        return Response({"message": f"<{user.username}> is not a manager."}) # inform if user is not a manager
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def delivery_crew_details(request):
+    """
+    Endpoint: /api/groups/delivery-crew/users
+    GET: List all Delivery crew group users
+    POST: Adds user to the delivery group/promote user to a delivery crew.
+    :param request:
+    :return: JSON() and status code
+
+    e.g : POST data
+        {
+            "username":"username"
+        }
+    """
+    delivery_crew_group = get_object_or_404(Group, name='Delivery crew')
+    if request.method == 'GET':
+        delivery_crew_users = User.objects.filter(groups=delivery_crew_group)
+        delivery_crew_user_serialized = UserSerializer(delivery_crew_users, many=True)
+        return Response(delivery_crew_user_serialized.data, status.HTTP_200_OK)
+    if request.method == 'POST':
+        # Get the user instance from POST request
+        username = request.data['username']
+        try:
+            user = get_object_or_404(User, username=username)
+        except Http404:
+            return Response({"message": f"User with username '{username}' not found."}, status.HTTP_404_NOT_FOUND)
+
+        if user.groups.filter(name=delivery_crew_group).exists():  # inform if the user is already a delivery crew
+            return Response({"message": f"The user <{user}> is already a delivery crew."}, status.HTTP_204_NO_CONTENT)
+        else:  # Add user to Manager
+            user.groups.add(delivery_crew_group)
+            return Response({"message": f"You promoted <{user}> to a delivery crew."}, status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def delivery_crew(request, pk):  # Endpoint/groups/delivery-crew/users/<int:pk>
+    """
+    Demote user from delivery crew group via DELETE Request
+    :param request:
+    :param pk:
+    :return:
+    """
+    if request.method == 'DELETE':
+        delivery_crew_group = get_object_or_404(Group, name='Delivery crew')
+        user = get_object_or_404(User, id=pk)
+        if user.groups.filter(name=delivery_crew_group).exists():  # if a delivery crew, remove/demote user
+            user.groups.remove(delivery_crew_group)
+            return Response({"message": f"<{user.username}> is demoted. No longer delivery crew."}, status.HTTP_204_NO_CONTENT)
+        # inform if user is not a delivery
+        return Response({"message": f"<{user.username}> is not delivery crew."}, status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET', 'POST'])
