@@ -6,9 +6,19 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
+
 # import models
-from .models import MenuItem, Category
-from .serializers import MenuItemSerializer, UserSerializer
+from .models import (
+    MenuItem,
+    Category,
+    Cart,
+)
+
+from .serializers import (
+    MenuItemSerializer,
+    UserSerializer,
+    CartSerializer,
+)
 
 from django.contrib.auth.models import User, Group
 
@@ -155,7 +165,8 @@ def delivery_crew(request, pk):  # Endpoint/groups/delivery-crew/users/<int:pk>
         user = get_object_or_404(User, id=pk)
         if user.groups.filter(name=delivery_crew_group).exists():  # if a delivery crew, remove/demote user
             user.groups.remove(delivery_crew_group)
-            return Response({"message": f"<{user.username}> is demoted. No longer delivery crew."}, status.HTTP_204_NO_CONTENT)
+            return Response({"message": f"<{user.username}> is demoted. No longer delivery crew."},
+                            status.HTTP_204_NO_CONTENT)
         # inform if user is not a delivery
         return Response({"message": f"<{user.username}> is not delivery crew."}, status.HTTP_404_NOT_FOUND)
 
@@ -285,3 +296,36 @@ def single_menu_item(request, pk):
     elif request.method == 'DELETE':
         menu_item.delete()
         return Response({'message': 'Resource deleted successfully.'}, status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def cart(request):
+    """
+    GET: Fetches all Cart items for the Current user.
+    POST: Allows Current user to add menu items to their Cart
+          Example POST payload:
+              {
+                "menuitem":"10",
+                "quantity":"10"
+              }
+    :param request:
+    :return: JSON() and Status Codes.
+    """
+    if request.method == 'GET':
+        # Fetch cart items for the current user
+        user_cart_items = Cart.objects.filter(user=request.user)  # Pass the authenticated user to the serializer
+        user_cart_items_serialized = CartSerializer(user_cart_items, many=True)
+        return Response(user_cart_items_serialized.data, status.HTTP_200_OK)
+    if request.method == "POST":
+        serialized_cart_items = CartSerializer(data=request.data,
+                                               context={'request': request})  # Deserialize the JSON data
+        # catch if user tries to add duplicates to their cart. This constraint is added in the Cart model.
+        try:
+            serialized_cart_items.is_valid(raise_exception=True)  # validate data and throw an error if invalid
+            serialized_cart_items.save()  # Throws an error if unique constraint is not followed. This prevents duplicates
+        except:
+            menu_item = get_object_or_404(MenuItem, pk=request.data.get('menuitem'))
+            return Response({"Error": f"No duplicates allowed. You already have {menu_item} in your cart, increase " 
+                                      f"quantity instead."}, status.HTTP_400_BAD_REQUEST)
+        return Response(serialized_cart_items.data, status.HTTP_201_CREATED)
