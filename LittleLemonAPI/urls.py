@@ -17,4 +17,6 @@ urlpatterns = [
     path('menu-items/<int:pk>', views.single_menu_item),
     # cart endpoints
     path('cart/menu-items', views.cart),
+    # order management endpoints
+    path('orders/', views.orders),
 ]

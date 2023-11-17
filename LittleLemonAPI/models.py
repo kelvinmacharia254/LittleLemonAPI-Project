@@ -66,7 +66,7 @@ class OrderItem(models.Model):
     When an order is placed. Items moves from Cart to OrderItems table.
     It links to Order table(orderID)
     """
-    order = models.ForeignKey(User, on_delete=models.CASCADE)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE)
     menuitem = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
     quantity = models.SmallIntegerField()
     unit_price = models.DecimalField(max_digits=6, decimal_places=2)

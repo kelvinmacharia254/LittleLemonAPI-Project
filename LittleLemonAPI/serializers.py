@@ -5,7 +5,8 @@ from django.contrib.auth.models import User
 from .models import (
     MenuItem,
     Category,
-    Cart
+    Cart,
+    OrderItem,
 )
 
 
@@ -60,3 +61,9 @@ class CartSerializer(serializers.ModelSerializer):
                                         **validated_data)
 
         return cart_item
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderItem
+        fields = ['id', 'order', 'menuitem', 'quantity', 'unit_price', 'price']

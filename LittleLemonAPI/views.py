@@ -1,4 +1,6 @@
 # Create your views here.
+from django.utils import timezone
+
 from django.shortcuts import get_object_or_404
 from django.http import Http404
 from rest_framework import status
@@ -13,12 +15,15 @@ from .models import (
     MenuItem,
     Category,
     Cart,
+    Order,
+    OrderItem
 )
 
 from .serializers import (
     MenuItemSerializer,
     UserSerializer,
     CartSerializer,
+    OrderItemSerializer,
 )
 
 from django.contrib.auth.models import User, Group
@@ -299,7 +304,7 @@ def single_menu_item(request, pk):
         return Response({'message': 'Resource deleted successfully.'}, status=status.HTTP_204_NO_CONTENT)
 
 
-@api_view(['GET', 'POST'])
+@api_view(['GET', 'POST', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def cart(request):
     """
@@ -315,18 +320,88 @@ def cart(request):
     """
     if request.method == 'GET':
         # Fetch cart items for the current user
-        user_cart_items = Cart.objects.filter(user=request.user)  # Pass the authenticated user to the serializer
+        user_cart_items = Cart.objects.filter(user=request.user)
         user_cart_items_serialized = CartSerializer(user_cart_items, many=True)
         return Response(user_cart_items_serialized.data, status.HTTP_200_OK)
+
     if request.method == "POST":
         serialized_cart_items = CartSerializer(data=request.data,
-                                               context={'request': request})  # Deserialize the JSON data
-        # catch if user tries to add duplicates to their cart. This constraint is added in the Cart model.
+                                               context={
+                                                   'request': request})  # Deserialize the JSON data and pass the ...
+        # ...authenticated user to the serializer
+
+        # catch if user tries to add duplicates to their cart. This constraint is defined in the Cart model.
         try:
             serialized_cart_items.is_valid(raise_exception=True)  # validate data and throw an error if invalid
-            serialized_cart_items.save()  # Throws an error if unique constraint is not followed. This prevents duplicates
+            serialized_cart_items.save()  # Throws an error if unique constraint is not followed. ...
+            # ... This prevents duplicates
         except:
             menu_item = get_object_or_404(MenuItem, pk=request.data.get('menuitem'))
-            return Response({"Error": f"No duplicates allowed. You already have {menu_item} in your cart, increase " 
+            return Response({"Error": f"No duplicates allowed. You already have {menu_item} in your cart, increase "
                                       f"quantity instead."}, status.HTTP_400_BAD_REQUEST)
         return Response(serialized_cart_items.data, status.HTTP_201_CREATED)
+
+    if request.method == 'DELETE':
+        # Fetch cart items for the current user
+        user_cart_items = Cart.objects.filter(user=request.user)
+        user_cart_items.delete()
+        return Response({"Message": "All Items have been deleted from the Cart."}, status.HTTP_204_NO_CONTENT)
+
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def orders(request):
+    if request.method == 'GET':
+        if request.user.groups.filter(name='Manager').exists():
+            # For a manager, display order items for all users
+            orders = Order.objects.all()
+        elif request.user.groups.filter(name='Delivery crew').exists():
+            # For a delivery crew, display orders assigned to them
+            orders = Order.objects.filter(delivery_crew=request.user)
+        else:
+            # For a normal user, display items in their order
+            order = get_object_or_404(Order, user=request.user)
+            user_order_items = OrderItem.objects.filter(order=order)
+            serialized_user_order_items = OrderItemSerializer(user_order_items, many=True)
+            return Response(serialized_user_order_items.data, status=status.HTTP_200_OK)
+
+        # Serialize order details
+        serialized_orders = []
+        for order in orders:
+            user_order_items = OrderItem.objects.filter(order=order)
+            serialized_order_items = OrderItemSerializer(user_order_items, many=True)
+            serialized_orders.append({'order_id': order.id, 'order_items': serialized_order_items.data})
+
+        return Response(serialized_orders, status=status.HTTP_200_OK)
+
+    if request.method == 'POST':
+        user_cart_items = Cart.objects.filter(user=request.user)
+        if user_cart_items.exists():
+            # Create a new order
+            new_order = Order.objects.create(user=request.user, status=False, total=0, date=timezone.now())
+            total_price = 0
+
+            # Create OrderItems and associate them with the new order
+            for cart_item in user_cart_items:
+                order_item = OrderItem.objects.create(
+                    order=new_order,
+                    menuitem=cart_item.menuitem,
+                    quantity=cart_item.quantity,
+                    unit_price=cart_item.unit_price,
+                    price=cart_item.price
+                )
+                total_price += cart_item.price
+
+            # Update the total price for the new order
+            new_order.total = total_price
+            new_order.save()
+
+            # Delete Cart items after adding to the order
+            user_cart_items.delete()
+
+            return Response({"Message": "Order created"}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"Message": "Your cart is empty. Add items to proceed."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
