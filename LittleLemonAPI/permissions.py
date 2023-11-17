@@ -8,3 +8,10 @@ class IsManager(permissions.BasePermission):
     def has_permission(self, request, view):
         # Check if the user belongs to the allowed group
         return request.user.groups.filter(name=self.allowed_group).exists()
+        # By Django default, the admin use has all permissions regardless of group membership or not.
+        # Implement return statement as below to restrict admin user
+        # return (
+        #     not request.user.is_superuser and
+        #     request.user.groups.filter(name=self.allowed_group).exists()
+        # )
+

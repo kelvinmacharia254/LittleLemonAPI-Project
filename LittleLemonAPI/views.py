@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from .permissions import IsManager
 
 # import models
 from .models import (
@@ -62,7 +63,7 @@ def user_details(request):
 
 # User groups management endpoints
 @api_view(['GET', 'POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsManager])
 def managers_details(request):
     """
     Endpoint: /api/groups/manager/users
@@ -98,7 +99,7 @@ def managers_details(request):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsManager])
 def manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
     """
     Demote user from manager group via DELETE Request
@@ -117,7 +118,7 @@ def manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsManager])
 def delivery_crew_details(request):
     """
     Endpoint: /api/groups/delivery-crew/users
@@ -152,7 +153,7 @@ def delivery_crew_details(request):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsManager])
 def delivery_crew(request, pk):  # Endpoint/groups/delivery-crew/users/<int:pk>
     """
     Demote user from delivery crew group via DELETE Request
