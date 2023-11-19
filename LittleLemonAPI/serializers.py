@@ -7,6 +7,7 @@ from .models import (
     Category,
     Cart,
     OrderItem,
+    Order
 )
 
 
@@ -43,7 +44,7 @@ class CartSerializer(serializers.ModelSerializer):
         model = Cart
         fields = ['id', 'user', 'menuitem', 'quantity', 'unit_price', 'price']
 
-        # This fields are not expected to be passed in a POST request payload
+        # These fields are not expected to be passed in a POST request payload
         read_only_fields = ['user', 'price',
                             'unit_price']  # Cart Item Id/pk is added automatically.
 
@@ -67,3 +68,37 @@ class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = ['id', 'order', 'menuitem', 'quantity', 'unit_price', 'price']
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ['id', 'user', 'delivery_crew', 'status', 'total', 'date']
+        # These fields are not expected to be passed in a POST request payload
+        read_only_fields = ['total', 'date',]  # Order Item Id/pk is added automatically
+
+    def validate(self, data):
+        """
+        Validate the data fields required to PATCH depending on user group.
+        Manager Requires status and delivery_crew field while the
+        delivery_crew requires the status field only
+        :param data:
+        :return:
+        """
+        user = self.context['request'].user
+
+        if user.groups.filter(name='Manager').exists():
+            # Only allow Manager to update status and delivery_crew fields
+            if 'status' not in data:
+                raise serializers.ValidationError("Status field is required for Manager")
+            if 'delivery_crew' not in data:
+                raise serializers.ValidationError("Delivery crew field is required for Manager")
+        elif user.groups.filter(name='Delivery crew').exists():
+            # Only allow Delivery crew to update status field
+            if 'status' not in data:
+                raise serializers.ValidationError("Status field is required for Delivery crew")
+            if 'delivery_crew' in data:
+                raise serializers.ValidationError("Delivery crew field not allowed for Delivery crew")
+                # Or handle this differently based on your requirements
+
+        return data

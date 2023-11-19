@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from .permissions import IsManager
+from .permissions import IsManager, IsCustomer
 
 # import models
 from .models import (
@@ -24,6 +24,7 @@ from .serializers import (
     UserSerializer,
     CartSerializer,
     OrderItemSerializer,
+    OrderSerializer,
 )
 
 from django.contrib.auth.models import User, Group
@@ -348,10 +349,20 @@ def cart(request):
         return Response({"Message": "All Items have been deleted from the Cart."}, status.HTTP_204_NO_CONTENT)
 
 
-
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
-def orders(request):
+def order_manager(request):
+    """
+    ndpoint: /api/orders/
+    GET:
+        1. Manager: Returns all orders with order items by all users.
+        2. Customers: Returns their orders and items in each order
+        3. Delivery crew: Returns orders and items contained for orders assigned to them
+    POST:
+        1. Customers: Place the order of items in their cart
+    :param request:
+    :return:
+    """
     if request.method == 'GET':
         if request.user.groups.filter(name='Manager').exists():
             # For a manager, display order items for all users
@@ -360,7 +371,7 @@ def orders(request):
             # For a delivery crew, display orders assigned to them
             orders = Order.objects.filter(delivery_crew=request.user)
         else:
-            # For a normal user, display items in their order
+            # For a normal user, display items in their orders
             order = get_object_or_404(Order, user=request.user)
             user_order_items = OrderItem.objects.filter(order=order)
             serialized_user_order_items = OrderItemSerializer(user_order_items, many=True)
@@ -402,6 +413,77 @@ def orders(request):
 
             return Response({"Message": "Order created"}, status=status.HTTP_201_CREATED)
         else:
-            return Response({"Message": "Your cart is empty. Add items to proceed."},
+            return Response({"Message": "Your cart is empty. Add items to Cart to proceed."},
                             status=status.HTTP_400_BAD_REQUEST)
 
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def single_order_manager(request, pk):
+    """
+    Endpoint: /api/orders/{orderId}E
+    Uses:
+    1. Customer:
+        GET
+       - Return all items of the order id of the current user
+       - Display appropriate error HTTP error status code if the order id doesn't belong to current user.
+    2. Manager:
+        PUT, PATCH
+       - Assign Delivery crew to the order
+       - Update delivery status to 0 or 1
+       - Delete order
+    3. Delivery crew
+         PATCH
+       - Update delivery status to 0 or 1
+       Example1 PATCH LOAD:
+            {
+                "status":"1",
+                "delivery_crew":"2"
+            }
+        Example2 PATCH LOAD: Setting Delivery crew to None
+            {
+                "status":"0",
+                "delivery_crew":""
+            }
+    :param request:
+    :return: JSON and Status Code
+    """
+    order = get_object_or_404(Order, pk=pk)  # get order by id
+    if request.method == 'GET':
+        if not request.user.groups.exists():
+            # check if the orders belongs to the request user
+            if order.user == request.user:
+                order_items = OrderItem.objects.filter(order=order)
+                serialized_order_items = OrderItemSerializer(order_items, many=True)
+                serialized_orders = [{'order_id': order.id, 'order_items': serialized_order_items.data}]
+                return Response(serialized_orders, status.HTTP_200_OK)
+            else:
+                return Response({"message": "Not Found"}, status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({"message": "Access Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'PATCH':
+        user = request.user  # Fetch user
+        groups = user.groups.values_list('name', flat=True)  # Fetch group fo the user
+        allowed_groups = {'Manager', 'Delivery crew'}
+
+        # True if no intersection(no group).
+        # False if there is an intersection(group either manager or Delivery crew)
+        if not allowed_groups.intersection(groups):
+            return Response(
+                {"message": "Access Forbidden. Privileges required for access."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        # Validate the incoming data based on the user's group
+        serialized_input = OrderSerializer(
+            instance=order, data=request.data, context={'request': request}, partial=True
+        )
+        serialized_input.is_valid(raise_exception=True)
+        serialized_input.save()
+
+        return Response(serialized_input.data, status=status.HTTP_200_OK)
+
+    if request.method == 'DELETE':
+        if request.user.groups.filter(name='Manager').exists():
+            order.delete()
+            return Response({"message": f"Order {pk} deleted."}, status=status.HTTP_204_NO_CONTENT)

@@ -31,6 +31,7 @@ sqlparse = "==0.4.4"
 tzdata = "==2023.3"
 urllib3 = "==2.0.7"
 werkzeug = "==3.0.1"
+ipython = "*"
 
 [dev-packages]
 

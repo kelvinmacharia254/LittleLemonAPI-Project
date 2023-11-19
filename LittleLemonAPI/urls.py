@@ -18,5 +18,6 @@ urlpatterns = [
     # cart endpoints
     path('cart/menu-items', views.cart),
     # order management endpoints
-    path('orders/', views.orders),
+    path('orders/', views.order_manager),
+    path('orders/<int:pk>', views.single_order_manager),
 ]
