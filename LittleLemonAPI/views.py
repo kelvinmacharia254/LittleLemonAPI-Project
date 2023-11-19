@@ -34,7 +34,8 @@ from django.contrib.auth.models import User, Group
 @api_view(['POST'])
 def signup(request):
     """
-    Allows new user to register themselves
+    Allows new user to register themselves with username,email and password.
+    Endpoint: /api/users
     :param request:
     :return: user details or error if any
     """
@@ -51,6 +52,7 @@ def signup(request):
 def user_details(request):
     """
     Fetch details of the authenticated user
+    Endpoint: /api/users/me
     :param request:
     :return: user details
     """
@@ -90,6 +92,9 @@ def managers_details(request):
         # Get the user instance
         username = request.data['username']  # get username from POST request
         # user = get_object_or_404(User, username=username)
+
+        # use try statement incase you need custom message.
+        # et_object_or_404 handles errors automatically so need of try statement
         try:
             user = get_object_or_404(User, username=username)
         except Http404:
@@ -98,7 +103,7 @@ def managers_details(request):
         # Get the 'Manager' group
         manager_group = Group.objects.get(name='Manager')
         if user.groups.filter(name=manager_group).exists():  # inform if the user is already a manager
-            return Response({"message": f"The user <{user}> is already a manager."}, status.HTTP_204_NO_CONTENT)
+            return Response({"message": f"The user {user} is already a manager."}, status.HTTP_204_NO_CONTENT)
         else:  # Add user to Manager
             user.groups.add(manager_group)
             return Response({"message": f"You promoted {user} to a manager."}, status.HTTP_201_CREATED)
@@ -118,9 +123,9 @@ def manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
         user = get_object_or_404(User, id=pk)
         if user.groups.filter(name=manager_group).exists():  # if a manager, remove/demote user
             user.groups.remove(manager_group)
-            return Response({"message": f"<{user.username}> is demoted. No longer manager."}, status.HTTP_200)
+            return Response({"message": f"{user.username} is demoted. No longer manager."}, status.HTTP_200)
         # inform if user is not a manager
-        return Response({"message": f"<{user.username}> is not a manager."}, status.HTTP_404_NOT_FOUND)
+        return Response({"message": f"{user.username} is not a manager."}, status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET', 'POST'])
@@ -152,15 +157,15 @@ def delivery_crew_details(request):
             return Response({"message": f"User with username '{username}' not found."}, status.HTTP_404_NOT_FOUND)
 
         if user.groups.filter(name=delivery_crew_group).exists():  # inform if the user is already a delivery crew
-            return Response({"message": f"The user <{user}> is already a delivery crew."}, status.HTTP_204_NO_CONTENT)
+            return Response({"message": f"The user {user} is already a delivery crew."}, status.HTTP_204_NO_CONTENT)
         else:  # Add user to Manager
             user.groups.add(delivery_crew_group)
-            return Response({"message": f"You promoted <{user}> to a delivery crew."}, status.HTTP_201_CREATED)
+            return Response({"message": f"You promoted {user} to a delivery crew."}, status.HTTP_201_CREATED)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsManager])
-def delivery_crew(request, pk):  # Endpoint/groups/delivery-crew/users/<int:pk>
+def unassign_deliver_crew(request, pk):  # Endpoint/groups/delivery-crew/users/<int:pk>
     """
     Demote user from delivery crew group via DELETE Request
     :param request:
@@ -306,9 +311,10 @@ def single_menu_item(request, pk):
 
 
 @api_view(['GET', 'POST', 'DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsCustomer])
 def cart(request):
     """
+    Endpoint: /api/cart/menu-items
     GET: Fetches all Cart items for the Current user.
     POST: Allows Current user to add menu items to their Cart
           Example POST payload:
@@ -336,6 +342,7 @@ def cart(request):
             serialized_cart_items.is_valid(raise_exception=True)  # validate data and throw an error if invalid
             serialized_cart_items.save()  # Throws an error if unique constraint is not followed. ...
             # ... This prevents duplicates
+            # Error thrown during saving because, the constraint is set on the db schema
         except:
             menu_item = get_object_or_404(MenuItem, pk=request.data.get('menuitem'))
             return Response({"Error": f"No duplicates allowed. You already have {menu_item} in your cart, increase "
@@ -377,7 +384,7 @@ def order_manager(request):
             serialized_user_order_items = OrderItemSerializer(user_order_items, many=True)
             return Response(serialized_user_order_items.data, status=status.HTTP_200_OK)
 
-        # Serialize order details
+        # Serialize order details for manager and Delivery crew
         serialized_orders = []
         for order in orders:
             user_order_items = OrderItem.objects.filter(order=order)
@@ -386,7 +393,9 @@ def order_manager(request):
 
         return Response(serialized_orders, status=status.HTTP_200_OK)
 
-    if request.method == 'POST':
+    if request.method == 'POST': # order creation
+        # Carts only belongs to Customers.
+        # Enforce in cart creation endpoint i.e. /api/cart/menu-items
         user_cart_items = Cart.objects.filter(user=request.user)
         if user_cart_items.exists():
             # Create a new order
@@ -451,6 +460,7 @@ def single_order_manager(request, pk):
     order = get_object_or_404(Order, pk=pk)  # get order by id
     if request.method == 'GET':
         if not request.user.groups.exists():
+            # Only own orders and can list items in their orders
             # check if the orders belongs to the request user
             if order.user == request.user:
                 order_items = OrderItem.objects.filter(order=order)
@@ -458,9 +468,9 @@ def single_order_manager(request, pk):
                 serialized_orders = [{'order_id': order.id, 'order_items': serialized_order_items.data}]
                 return Response(serialized_orders, status.HTTP_200_OK)
             else:
-                return Response({"message": "Not Found"}, status.HTTP_404_NOT_FOUND)
+                return Response({"message": f"{request.user} has no orders"}, status.HTTP_404_NOT_FOUND)
         else:
-            return Response({"message": "Access Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"message": "Only Customer users can have orders."}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'PATCH':
         user = request.user  # Fetch user
@@ -471,10 +481,12 @@ def single_order_manager(request, pk):
         # False if there is an intersection(group either manager or Delivery crew)
         if not allowed_groups.intersection(groups):
             return Response(
-                {"message": "Access Forbidden. Privileges required for access."},
+                {"message": "Access Forbidden. Manager or Delivery crew privileges required to access."},
                 status=status.HTTP_403_FORBIDDEN)
 
-        # Validate the incoming data based on the user's group
+        # Validate the incoming data based on the user's group.
+        # Context must be passed to serializer to ensure PATCH is do for the right group.
+        # PATCH fields for either Manager or Delivery crew defined in the serializer's validate method.
         serialized_input = OrderSerializer(
             instance=order, data=request.data, context={'request': request}, partial=True
         )

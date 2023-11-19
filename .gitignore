@@ -5,6 +5,7 @@
 *.csv
 *.json
 *.tmp
+db.sqlite3
 # Ignore compiled Python files in all subfolders
 **/*.pyc
 

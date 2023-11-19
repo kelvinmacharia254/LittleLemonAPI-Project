@@ -75,26 +75,26 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['id', 'user', 'delivery_crew', 'status', 'total', 'date']
         # These fields are not expected to be passed in a POST request payload
-        read_only_fields = ['total', 'date',]  # Order Item Id/pk is added automatically
+        read_only_fields = ['total', 'date', ]  # Order Item Id/pk is added automatically
 
     def validate(self, data):
         """
         Validate the data fields required to PATCH depending on user group.
         Manager Requires status and delivery_crew field while the
-        delivery_crew requires the status field only
+        delivery_crew requires only the status field only
         :param data:
         :return:
         """
-        user = self.context['request'].user
+        user = self.context['request'].user  # get user
 
         if user.groups.filter(name='Manager').exists():
-            # Only allow Manager to update status and delivery_crew fields
+            # Manager can update status and delivery_crew fields
             if 'status' not in data:
                 raise serializers.ValidationError("Status field is required for Manager")
             if 'delivery_crew' not in data:
                 raise serializers.ValidationError("Delivery crew field is required for Manager")
         elif user.groups.filter(name='Delivery crew').exists():
-            # Only allow Delivery crew to update status field
+            # Allow Delivery crew to update status field only
             if 'status' not in data:
                 raise serializers.ValidationError("Status field is required for Delivery crew")
             if 'delivery_crew' in data:
