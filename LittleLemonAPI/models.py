@@ -31,7 +31,7 @@ class MenuItem(models.Model):
 
 class Cart(models.Model):
     """
-    Cart models is a temporally storage where user can place items before placing an order.
+    Cart models is a temporary storage where user can place items before placing an order.
     A user can only have one Cart at time.
     To start a new cart is either an order is placed or the existing one deleted.
     """

@@ -36,7 +36,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     # External packages
-    'django',
     'rest_framework',
     'rest_framework.authtoken',  # run migrations
     'djoser',
@@ -129,7 +128,10 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',  # Token authentication in DRF
         'rest_framework.authentication.SessionAuthentication',  # Works with browsable API. Deactivate when done
-    ]
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+                'user': '10/minute'
+                }
 }
 
 # DJOSER = {

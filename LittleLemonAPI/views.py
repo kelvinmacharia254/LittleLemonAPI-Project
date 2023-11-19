@@ -5,7 +5,10 @@ from django.shortcuts import get_object_or_404
 from django.http import Http404
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.throttling import UserRateThrottle
+
+from django.core.paginator import Paginator, EmptyPage
 
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from .permissions import IsManager, IsCustomer
@@ -48,7 +51,6 @@ def signup(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
 def user_details(request):
     """
     Fetch details of the authenticated user
@@ -123,7 +125,7 @@ def manager(request, pk):  # Endpoint/groups/manager/users/<int:pk>
         user = get_object_or_404(User, id=pk)
         if user.groups.filter(name=manager_group).exists():  # if a manager, remove/demote user
             user.groups.remove(manager_group)
-            return Response({"message": f"{user.username} is demoted. No longer manager."}, status.HTTP_200)
+            return Response({"message": f"{user.username} is demoted. No longer manager."}, status.HTTP_200_OK)
         # inform if user is not a manager
         return Response({"message": f"{user.username} is not a manager."}, status.HTTP_404_NOT_FOUND)
 
@@ -185,6 +187,7 @@ def unassign_deliver_crew(request, pk):  # Endpoint/groups/delivery-crew/users/<
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
 def menu_items(request):  # /api/menu-items/
     """
     Manages menu items via this FBV (Function-Based View).
@@ -219,8 +222,38 @@ def menu_items(request):  # /api/menu-items/
     """
     if request.method == 'GET':
         menuitems = MenuItem.objects.select_related('category').all()
+
+        # implement filtering of menu items using title
+        price = request.query_params.get('price')
+        if price:  # filter by title
+            menuitems = menuitems.filter(title=price)
+
+            # Fetch search criteria passed as a query param
+        search = request.query_params.get('search')
+        if search:  # implement searching
+            # menuitems = menuitems.filter(title__istartswith=search) # 'i' makes the search case-insensitive
+            menuitems = menuitems.filter(title__icontains=search)  # 'i' makes the search case-insensitive
+
+            # Fetch ordering criteria passed as a query param
+        ordering = request.query_params.get('ordering')
+        if ordering:  # implement ordering
+            menuitems = menuitems.order_by(ordering)
+                # ordering with multiple criteria
+            # ordering_fields = ordering.split(",")  # split the query string
+            # menuitems = menuitems.order_by(*ordering_fields)  # such by unpacking the list
+
+            # pagination
+        perpage = request.query_params.get('perpage', default=2)  #
+        page = request.query_params.get('page', default=1)  #
+        paginator = Paginator(menuitems, per_page=perpage)
+        try:
+            menuitems = paginator.page(number=page)
+        except EmptyPage:  # Deal with an empty page
+            menuitems = []
+
         serialized_menu_items = MenuItemSerializer(menuitems, many=True)
         return Response(serialized_menu_items.data, status.HTTP_200_OK)
+
     if request.method == 'POST':
         if not request.user.groups.filter(name='Manager').exists():
             return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
@@ -343,7 +376,7 @@ def cart(request):
             serialized_cart_items.save()  # Throws an error if unique constraint is not followed. ...
             # ... This prevents duplicates
             # Error thrown during saving because, the constraint is set on the db schema
-        except:
+        except Http404:
             menu_item = get_object_or_404(MenuItem, pk=request.data.get('menuitem'))
             return Response({"Error": f"No duplicates allowed. You already have {menu_item} in your cart, increase "
                                       f"quantity instead."}, status.HTTP_400_BAD_REQUEST)
@@ -358,6 +391,7 @@ def cart(request):
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
 def order_manager(request):
     """
     ndpoint: /api/orders/
@@ -379,10 +413,7 @@ def order_manager(request):
             orders = Order.objects.filter(delivery_crew=request.user)
         else:
             # For a normal user, display items in their orders
-            order = get_object_or_404(Order, user=request.user)
-            user_order_items = OrderItem.objects.filter(order=order)
-            serialized_user_order_items = OrderItemSerializer(user_order_items, many=True)
-            return Response(serialized_user_order_items.data, status=status.HTTP_200_OK)
+            orders = Order.objects.filter(user=request.user)
 
         # Serialize order details for manager and Delivery crew
         serialized_orders = []
@@ -393,7 +424,7 @@ def order_manager(request):
 
         return Response(serialized_orders, status=status.HTTP_200_OK)
 
-    if request.method == 'POST': # order creation
+    if request.method == 'POST':  # order creation
         # Carts only belongs to Customers.
         # Enforce in cart creation endpoint i.e. /api/cart/menu-items
         user_cart_items = Cart.objects.filter(user=request.user)
@@ -404,6 +435,7 @@ def order_manager(request):
 
             # Create OrderItems and associate them with the new order
             for cart_item in user_cart_items:
+                # Populate order items with all items from the cart
                 order_item = OrderItem.objects.create(
                     order=new_order,
                     menuitem=cart_item.menuitem,
